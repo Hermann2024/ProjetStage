@@ -1,0 +1,810 @@
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<link rel="stylesheet" href="css/bootstrap.min.css">
+	<link rel="stylesheet" href="css/semantic.min.css">
+	<link rel="stylesheet" href="css/ladda.min.css">
+	<link rel="stylesheet" href="css/jquery.treegrid.css">
+
+	<script src="script/jquery.js"></script>
+	<script src="script/bootstrap.min.js"></script>
+	<script src="script/semantic.min.js"></script>
+	<script type="text/javascript" src="script/jquery.treegrid.min.js"></script>
+	<script type="text/javascript" src="script/spin.min.js"></script>
+	<script type="text/javascript" src="script/ladda.min.js"></script>
+	<script type="text/javascript" src="script/jquery.i18n.properties.min.js"></script>
+</head>
+
+<style>
+	body {
+		font-family: Arial; font-size: 12px; color: #333A41;
+		background-repeat: no-repeat;
+		background-position: center top;
+		background-color: #BCD1E5;
+		margin: 0;
+		height: 99%;
+	}
+	td,th{
+		padding-left: 10px;
+		padding-right: 10px;
+	}
+	.modal-dialog {
+		font-size: 14px;
+	}
+
+	.headerButton {
+		padding: 6px 12px;
+	}
+
+	.ui.red.message {
+		background-color: #ea8557;
+		color: #fff;
+	}
+
+	.modal-body {
+		word-wrap: break-word;
+	}
+
+	tr:nth-child(even) {background-color: #f2f2f2}
+</style>
+
+<script type="text/javascript">
+	var timerRefresh;
+	var batchStateData = {};
+	var reloadBatch,reloadProcessor;
+	var taskIdArray = [];
+	var providerInfo = [];
+	var table = [true,true,true,true,true,false,false,true];
+
+	$(document).ready(function(){
+		//Déclaration des variables
+		var batchData = {};
+		var userLang = navigator.languages ? navigator.languages[0] : (navigator.language || navigator.userLanguage);
+
+		// Code permetant de Télécharger un fichier
+		$(document).on('click', '.downloadButton', function(){
+			var taskId = $(this).attr('name');
+			var fileUrls = providerInfo[taskId];
+
+			if (fileUrls && fileUrls.length > 0) {
+				fileUrls.forEach(function(fileUrl) {
+					var fileName = fileUrl.split('/').pop();
+					downloadFile(fileUrl, fileName);
+				});
+			} else {
+				alert('Aucun fichiers à télécharger.');
+			}
+		});
+
+
+	});
+
+	// Fonction pour télécharger un fichier
+	function downloadFile(fileUrl, fileName) {
+		var link = document.createElement('a');
+		link.href = fileUrl;
+		link.download = fileName;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	}
+
+
+
+	jQuery.i18n.properties({
+		name:'batch',
+		path:'properties/',
+		mode:'both',
+		language : userLang,
+		async: false
+	});
+
+	$('#reloadBatch').text(msg_17);
+	$('#reloadProcessor').text(msg_18);
+	$('#batchProcessTitle').text(msg_19);
+	$('#batchNameTitle').text(msg_20);
+	$('#selectBatchName option:first').text(msg_16);
+	$('#domainB').text(msg_6);
+	$('#domainP').text(msg_6);
+	$('#selectAll').text(msg_21);
+	$('#deselectAll').text(msg_22);
+	$('#launchBatch').text(msg_23);
+	$('#launchProcess').text(msg_25);
+	$('#processNameTitle').text(msg_24);
+
+
+	init();
+	//Event
+	$('#module').on('change', function() {
+		handleModuleChange();
+	});
+	//Selectionner tout les modules
+	$('#selectAll').click(function(){
+		handleSelection('module',true);
+		handleModuleChange();
+		$("#idModule div[class='default text']").html(msg_0);
+		$("#idModule div[class='text']").html(msg_0);
+		$('#idModule .item').each(function( module ) {
+			$(this).addClass("active");
+		});
+	});
+	//Selectionner aucun les modules
+	$('#deselectAll').click(function(){
+		handleSelection('module',false);
+		handleModuleChange();
+		$("#idModule div[class='default text']").html(msg_1);
+		$("#idModule div[class='text']").html(msg_1);
+		$('#idModule').dropdown('clear');
+		$('#idModule .item').each(function( module ) {
+			$(this).removeClass("active");
+		});
+	});
+	//Lancement du rechargement des batchs
+	$('#reloadBatch').click(function(){
+		if(!reloadBatch.isLoading())
+		{
+			reloadBatch.toggle();
+			$.ajax({url: "../../batchEngine?action=reload&xsl=true", success: function(result){
+					console.log();
+					if(result.childNodes[1].textContent != "Reloading Successful")
+					{
+						$('#reloadBatch').attr('data-color','red');
+						reloadBatch = Ladda.create( document.querySelector( '#reloadBatch' ) );
+						var errorMessage = msg_2 + result.childNodes[1].textContent;
+						$('#erreurMessage').html(errorMessage);
+						$('#erreurMessage').show();
+					}
+					else
+					{
+						$('#reloadBatch').attr('data-color','green');
+						reloadBatch = Ladda.create( document.querySelector( '#reloadBatch' ) );
+						$('#erreurMessage').hide();
+						setTimeout(function(){
+							$('#reloadBatch').attr('data-color','blue');
+							reloadBatch = Ladda.create( document.querySelector( '#reloadBatch' ) )
+						}, 3000);
+					}
+					getSelectData();
+					reloadBatch.toggle();
+				}});
+		}
+	});
+	//Lancement du rechargement des processors
+	$('#reloadProcessor').click(function(){
+		if(!reloadProcessor.isLoading())
+		{
+			reloadProcessor.toggle();
+			$.ajax({url: "../../processEngine?action=reload&xsl=true", success: function(result){
+					if(result.childNodes[1].textContent != "Reloading Successful")
+					{
+						$('#reloadProcessor').attr('data-color','red');
+						reloadProcessor = Ladda.create( document.querySelector( '#reloadProcessor' ) );
+						var errorMessage = msg_2 + result.childNodes[1].textContent;
+						$('#erreurMessage').html(errorMessage);
+						$('#erreurMessage').show();
+					}
+					else
+					{
+						$('#reloadProcessor').attr('data-color','green');
+						$('#erreurMessage').hide();
+						reloadProcessor = Ladda.create( document.querySelector( '#reloadProcessor' ) );
+						setTimeout(function(){
+							$('#reloadProcessor').attr('data-color','blue');
+							reloadProcessor = Ladda.create( document.querySelector( '#reloadProcessor' ) )
+						}, 3000);
+					}
+					getSelectData();
+					reloadProcessor.toggle();
+				}});
+		}
+	});
+	//Lancement d'un batch
+	$('#launchBatch').click(function(){
+		$('#frameProcessor').hide();
+		$('#tableStatus').show();
+		launchBatch();
+	});
+	//Lancement d'un processor
+	$('#launchProcess').click(function(){
+		$('#tableStatus').hide();
+		$('#frameProcessor').show();
+		launchProcess();
+	});
+	//Affichage du modal affichant plus d'informations sur les batchs
+	$('body').on('click', '#detail', function () {
+		$('#detailContent').html("");
+		findBatchById(batchStateData,$(this).prop("name"));
+		showDetail();
+	});
+	//Initialise les colonnes visible
+	function initTable()
+	{
+		table = [true,true,true,true,true,false,false,true];
+	}
+
+	function handleSelection(selector,bool)
+	{
+		$('#'+ selector + ' option').each(function(){
+			this.selected = bool;
+		});
+	}
+	//Méthode de lancement de batch
+	function launchBatch()
+	{
+		var batchName = $('#selectBatchName').val();
+		var domain = $('#batchDomain').val();
+		if(batchName != null && batchName != "" && domain != null && domain != "")
+		{
+			$.ajax({url: "getDataBatch.jsp?method=launchBatch&batchName=" + batchName + "&domain=" +domain, success: function(result){
+					if(result.batchExecutionExceptionReportType != null)
+					{
+						alert(msg_3 + result.batchExecutionExceptionReportType.message);
+					}
+					else
+					{
+						initTable();
+						$('#batchId').html(result.batchEngineResponseType.batchId + "  -  " + batchName);
+						getBatchStatus(result.batchEngineResponseType.batchId,batchName);
+						$('#panelContent').show();
+						stopTimer();
+						timerRefresh = setInterval(function(){
+							getBatchStatus(result.batchEngineResponseType.batchId,batchName);
+						}, 1000);
+					}
+				}});
+		}
+	}
+	//Méthode de lancement de processor
+	function launchProcess()
+	{
+		var processName = $('#selectProcess').val();
+		var domain = $('#processorDomain').val();
+		if(processName != null && processName != "" && domain != null && domain != "")
+		{
+			$('#panelContent').show();
+			$('#frameProcessor').attr("src","../../processEngine?action=execute&processName=" + processName + "&domain=" + domain);
+			$('#batchId').html(processName);
+		}
+	}
+	//Arrêt du rafraichissement
+	function stopTimer()
+	{
+		clearInterval(timerRefresh);
+	}
+
+	//Récupération du status d'un batch
+	function getBatchStatus(batchId,batchName)
+	{
+		$.ajax({url: "getDataBatch.jsp?method=getStatus&batchId=" + batchId + "&batchName=" + batchName, success: function(result){
+				//Header
+				var tableHtml = "<tr><th>" + msg_4 + "</th><th>" + msg_5 + "</th><th>" + msg_6 +"</th><th>" + msg_7 + "</th><th>" + msg_8 + "</th><th>" + msg_9 + "</th><th>" + msg_10 + "</th></tr>";
+				var batchRoot = result.batchReportType;
+				var compteur = {number : 0};
+				taskIdArray = [];
+				tableHtml += getChildrenRow(batchRoot,true,compteur,0);
+				batchStateData = batchRoot;
+				$('#tableStatus').html(tableHtml);
+				$('.tree').treegrid();
+				for(var index in table)
+				{
+					if(!table[index])
+					{
+						var id = parseInt(index) + 1;
+						$('#tableStatus tr > *:nth-child('+ id +')').hide();
+					}
+				};
+			}});
+	}
+	//Vérifie si le batch est terminé
+	function checkEnd(child,first)
+	{
+		if(child.endDate != undefined)
+		{
+			if(first)
+				stopTimer();
+		}
+	}
+
+	//Forme l'affichage de la durée
+	function getDurationLabel(child)
+	{
+		var duration = 0;
+		if(child.endDate != undefined)
+		{
+			duration = new Date(child.endDate) - new Date(child.startDate);
+		}
+		else
+		{
+			duration = new Date() - new Date(child.startDate);
+		}
+		return getTimeFromMillis(duration);
+	}
+
+	//Converti les millis en jours/day/min/sec
+	function getTimeFromMillis(duration)
+	{
+		var millisec = duration;
+		var seconds = (millisec / 1000).toFixed(1);
+		var minutes = (millisec / (1000 * 60)).toFixed(1);
+		var hours = (millisec / (1000 * 60 * 60)).toFixed(1);
+		var days = (millisec / (1000 * 60 * 60 * 24)).toFixed(1);
+		if (seconds < 60) {
+			return seconds + msg_11;
+		} else if (minutes < 60) {
+			return minutes + msg_12;
+		} else if (hours < 24) {
+			return hours + msg_13;
+		} else {
+			return days + msg_14;
+		}
+	}
+	//Parcours les données afin de former le tableau
+	function getChildrenRow(root,first,compteur,parentId)
+	{
+		if(root != null)
+		{
+			var result = "<tr class='treegrid-" + compteur.number;
+			if(!first)
+			{
+				result+=  " treegrid-parent-" + parentId;
+			}
+			result += "'>";
+			result += constructTr(root);
+			checkEnd(root,first);
+			result += "</tr>";
+			if(root.content != null)
+			{
+				parentId = compteur.number;
+				if(root.content.batch != null)
+				{
+					root.content.batch.forEach(function(batch)
+					{
+						compteur.number++;
+						result += getChildrenRow(batch,false,compteur,parentId);
+					});
+				}
+				if(root.content.task != null)
+				{
+					root.content.task.forEach(function(task)
+					{
+						taskIdArray.push(task.id);
+						compteur.number++;
+						result += getChildrenRow(task,false,compteur,parentId);
+					});
+				}
+			}
+			return result;
+		}
+	}
+	//Forme l'affichage des erreurs
+	function getErrorLabel(data)
+	{
+		var result = "";
+		if(data.errorList != null)
+		{
+			data.errorList.error.forEach(function(error){
+				var errorMessage = error.errorCode + " " + error.errorLevel;
+				result = "<div style='overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 425px; color : red;' title='"+errorMessage+"'>" + errorMessage +  "</div>";
+			});
+		}
+		return result;
+	}
+	//Construit une ligne de tableau
+	function constructTr(data)
+	{
+		var result = "";
+		result += "<td>" + getCodeLabel(data) + "</td>";
+		result += "<td>" + "<div>" + getPathLabel(data) + "</div>" + getErrorLabel(data) + "</td>";
+		result += "<td>" + data.domain + "</td>";
+		result += "<td>" + getDateLabel(data.startDate) + "</td>";
+		result += "<td>" + getDurationLabel(data) + "</td>";
+		result += "<td>" + getWorkProgressLabel(data.progress) + "</td>";
+		result += "<td><div style='overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 350px;'";
+
+		if(data.taskInfo != null)
+		{
+			$.ajax({
+				url: "getDataBatch.jsp?method=getProviderInfo&taskId=" + data.id,
+				async: false,
+				success: function (response) {
+					if (response.fileProviderTraceListType != null && response.fileProviderTraceListType.list != null) {
+						table[6] = true;
+						var temp = [];
+						response.fileProviderTraceListType.list.forEach(function (file) {
+							var color = "green";
+							if (response.fileProviderTraceListType.list.indexOf(file) == response.fileProviderTraceListType.list.length - 1)
+								color = "black";
+							result += "<div style='color:" + color + "' title='" + file.filePath + "'>";
+							result += file.fileName;
+							result += "</div>";
+							temp.push(file.filePath);
+						});
+						providerInfo[data.id] = temp;
+					}
+				}
+			});
+		}
+		result += "</td>";
+		result += "<td>" +
+				"<button type='button' name='" + data.id + "' class='btn btn-default' id='detail'>Detail</button>" +
+				"<button type='button' name='" + data.id + "' class='btn btn-success downloadButton'>Télécharger</button>" +
+				"</td>";
+		return result;
+	}
+
+	//Forme l'affichage de la date
+	function getDateLabel(date) {
+		var date = new Date(date);
+		return date.toLocaleDateString() + "  " + date.toLocaleTimeString() + ":" + date.getMilliseconds();
+	}
+
+	//Forme l'affichage du code
+	function getCodeLabel(data) {
+		var retour = "";
+		if (data.taskInfo != null) {
+			retour += '<i title="task" style="margin: 10px;" class="glyphicon glyphicon-th-tasks"></i>';
+		} else {
+			retour += '<i title="batch" style="margin: 10px;" class="glyphicon glyphicon-th-list"></i>';
+		}
+		retour += data.id;
+		return retour;
+	}
+
+	//Forme l'affichage du chemin
+	function getPathLabel(data) {
+		var result = getInErrorIcon(data.error, data.endDate != null);
+		var path = data.path;
+		var error = data.inError;
+		if (path.indexOf(".") != -1)
+			result += path.substring(path.lastIndexOf(".") + 1);
+		else
+			result += path;
+		return result;
+	}
+
+	//Forme l'affichage de l'avancement
+	function getWorkProgressLabel(workProgress) {
+		if (workProgress != null) {
+			table[5] = true;
+			return workProgress;
+		} else {
+			return "";
+		}
+	}
+
+	//Récupère l'icon pour les erreurs
+	function getInErrorIcon(inError, end) {
+		if (inError == null)
+			inError = false;
+		if (!inError) {
+			if (end)
+				return " <img src='img/valid.png' alt='valid' style='width:16px;height:16px; padding-right:2px'>";
+			else
+				return " <img src='img/Vector_Loading_fallback.gif' alt='valid' style='width:16px;height:16px; padding-right:2px'>";
+
+		} else {
+			return " <img src='img/invalid.png' alt='invalid' style='width:16px;height:16px;padding-right:2px'>";
+		}
+	}
+
+	//Permet de trouver le batch dans le tableau de données
+	function findBatchById(data, id) {
+		if (data == null)
+			return;
+		if (data.id == id) {
+			var type = (data.batchType != null ? "batch" : "task");
+			$('#detailContent').html(createModal(data, type));
+			return;
+		} else if (data.content != null) {
+			if (data.content.batch != null) {
+				data.content.batch.forEach(function (batch) {
+					findBatchById(batch, id);
+				});
+			}
+			if (data.content.task != null) {
+				data.content.task.forEach(function (batch) {
+					findBatchById(batch, id);
+				});
+			}
+		}
+	}
+
+	//Permet de créer le modal
+	function createModal(data, type) {
+		$('#modalTitle').html(type + "  -  " + data.path);
+		var result = "";
+		result += "id : " + data.id + "</br>";
+		result += "startTime : " + data.startDate + "</br>";
+		result += "endTime : " + data.endDate + "</br>";
+		result += "state : " + data.state + "</br>";
+		result += "domain : " + data.domain + "</br>";
+		result += "site code : " + data.siteCode + "</br>";
+
+		if (data.error == null)
+			data.error = false;
+		result += "inError : " + data.error + "</br>";
+		if (data.errorList != null) {
+			data.errorList.error.forEach(function (error) {
+				var errorMessage = error.errorCode + " " + error.errorLevel;
+				result += "<div style='color : red;' title='" + errorMessage + "'>" + errorMessage + "</div>";
+			});
+		}
+
+		if (type == "batch") {
+			result += "batchType : " + data.batchType + "</br>";
+		} else if (type == "task") {
+			result += "taskType : " + data.taskInfo.type + "</br>";
+			result += "step : " + data.step + "</br>";
+			if (providerInfo[data.id] != null) {
+				result += "files : </br>";
+				providerInfo[data.id].forEach(function (provider) {
+					result += provider;
+					result += "</br>";
+				});
+			}
+		}
+
+
+		return result;
+	}
+
+	//Affiche le modal
+	function showDetail() {
+		$(".modal").modal({
+			closable: false
+		}).modal('show');
+	}
+
+
+	//Initialisation
+	function init() {
+		reloadBatch = Ladda.create(document.querySelector('#reloadBatch'));
+		reloadProcessor = Ladda.create(document.querySelector('#reloadProcessor'));
+		getSelectData();
+		$('#tableStatus').hide();
+		$('#frameProcessor').hide();
+		$('#selectBatchName').dropdown();
+		$('#batchDomain').dropdown();
+		$('#processorDomain').dropdown();
+		$('.modal').hide();
+		$('#panelContent').hide();
+		$('#erreurMessage').hide();
+		$('.menu .item').tab();
+	}
+
+	//Récupère les informations d'initialisation
+	function getSelectData() {
+		$.ajax({
+			url: "getDataBatch.jsp?method=getSelectData", success: function (result) {
+				batchData = result.batchExecutionSelectionDataType.modules.batchExecutionModuleList;
+				updateModuleList(result.batchExecutionSelectionDataType.modules.batchExecutionModuleList);
+				updateDomainList(result.batchExecutionSelectionDataType.domains.domainName);
+				updateProcessorList(result.batchExecutionSelectionDataType.process.processName);
+				$('#selectAll').click();
+			}
+		});
+	}
+
+	//Met à jour la liste des domaines
+	function updateDomainList(domains) {
+		$('#batchDomain').html("");
+		$('#processorDomain').html("");
+		domains.sort(function (a, b) {
+			var upA = a.toUpperCase();
+			var upB = b.toUpperCase();
+			return (upA < upB) ? -1 : (upA > upB) ? 1 : 0;
+		});
+		for (var domainIndex in domains) {
+			$('#batchDomain').append($('<option>', {
+				value: domains[domainIndex],
+				text: domains[domainIndex],
+				selected: domains[domainIndex] == "default"
+			}));
+			$('#processorDomain').append($('<option>', {
+				value: domains[domainIndex],
+				text: domains[domainIndex],
+				selected: domains[domainIndex] == "default"
+			}));
+		}
+	}
+
+	//Mise à jour de la liste des modules
+	function updateModuleList(data) {
+		$('#module').html("");
+		data.sort(function (a, b) {
+			var upA = a.moduleName.toUpperCase();
+			var upB = b.moduleName.toUpperCase();
+			return (upA < upB) ? -1 : (upA > upB) ? 1 : 0;
+		});
+		for (var module in data) {
+			$('#module').append($('<option>', {
+				value: data[module].moduleName,
+				text: data[module].moduleName
+			}));
+		}
+		$('#module').dropdown({useLabels: false});
+	}
+
+	//Mise à jour de la liste des processors
+	function updateProcessorList(data) {
+		$('#selectProcess').html('<option value="" selected="selected">' + msg_15 + '</option>');
+		data.sort(function (a, b) {
+			var upA = a.toUpperCase();
+			var upB = b.toUpperCase();
+			return (upA < upB) ? -1 : (upA > upB) ? 1 : 0;
+		});
+		for (var processName in data) {
+			$('#selectProcess').append($('<option>', {
+				value: data[processName],
+				text: data[processName]
+			}));
+		}
+		$('#selectProcess').dropdown({useLabels: false});
+	}
+
+	//Nettoie la liste des batchs 
+	function clear() {
+		var options = $('#selectBatchName')[0].options;
+		for (var option in options) {
+			options.remove(option);
+		}
+		$('#selectBatchName').dropdown('refresh');
+	}
+
+	//Gère le changement de module
+	function handleModuleChange() {
+		clear();
+		var batchListToDisplay = [];
+		var selectedModuleList = $('#module').val();
+
+
+		$('#selectBatchName').find('option').remove().end().append('<option value="" selected="selected">' + msg_16 + '</option>');
+
+
+		$('#selectBatchName').append('<option value="" selected="selected">' + msg_16 + '</option>');
+		if (selectedModuleList != null) {
+			for (var module = 0; module < selectedModuleList.length; module++) {
+				for (var batchId in batchData) {
+					if (batchData[batchId].moduleName == selectedModuleList[module]) {
+						var batchList = batchData[batchId].batchName;
+						for (var batch = 0; batch < batchList.length; batch++) {
+							batchListToDisplay.push(batchList[batch]);
+						}
+					}
+				}
+			}
+		}
+		batchListToDisplay.sort(function (a, b) {
+			var upA = a.toUpperCase();
+			var upB = b.toUpperCase();
+			return (upA < upB) ? -1 : (upA > upB) ? 1 : 0;
+		});
+		for (var id in batchListToDisplay) {
+			$('#selectBatchName').append($('<option>', {
+				value: batchListToDisplay[id],
+				text: batchListToDisplay[id]
+			}));
+		}
+		$('#selectBatchName').dropdown('refresh');
+	}
+
+
+</script>
+
+<body style="background-color:transparent">
+<div class="ui red message" id="erreurMessage" style="margin:3px;"></div>
+<div class="panel panel-primary" style="margin : 3px">
+	<div class="panel-heading clearfix">
+		<div class="btn-group pull-right">
+			<button id="reloadBatch" class="ladda-button headerButton" data-color="blue" data-style="expand-right"><span
+					class="ladda-label">Batch reloading</span></button>
+			<button id="reloadProcessor" class="ladda-button headerButton" data-color="blue" data-style="expand-right">
+				<span class="ladda-label">Process reloading</span></button>
+		</div>
+		<h4 class="panel-title" id="batchProcessTitle">Batch/Process selector</h4>
+	</div>
+	<div class="ui top attached tabular menu" style="margin-left: 5px;width: 99%;">
+		<a class="item active" data-tab="batch">Batch</a>
+		<a class="item" data-tab="process">Process</a>
+	</div>
+	<div class="ui bottom attached tab segment active" style="margin-left: 5px;margin-bottom:5px;width: 99%;"
+		 data-tab="batch">
+		<div class="row">
+			<div class="col-md-4">
+				<div class="form-group">
+					<label id="batchNameTitle">
+						Batch name :
+					</label>
+					<select id="selectBatchName" class="ui fluid search selection dropdown" name="inline">
+						<option value="" selected="selected">Select a batch</option>
+					</select>
+				</div>
+			</div>
+			<div class="col-md-2">
+				<div class="form-group">
+					<label id="domainB">
+						Domain :
+					</label>
+					<select id="batchDomain" class="ui fluid search selection dropdown">
+						<option value="" selected="selected">default</option>
+					</select>
+				</div>
+			</div>
+			<div class="col-md-4" id="idModule">
+				<div class="row">
+					<div class="form-group" style="margin-bottom: 0px; margin-top: -2px;">
+						<label>
+							Module :
+						</label>
+						<button type="button" id="selectAll" class="btn btn-info btn-xs">All module</button>
+						<button type="button" id="deselectAll" class="btn btn-info btn-xs">None</button>
+					</div>
+				</div>
+				<div class="row">
+					<select id="module" name="module" class="ui fluid search dropdown" multiple="">
+						<option value="" selected="selected">Select one or more module</option>
+					</select>
+				</div>
+			</div>
+			<div class="col-md-2" style="margin-top: 20px;">
+				<button type="button" id="launchBatch" class="btn btn-primary">Launch batch</button>
+			</div>
+		</div>
+	</div>
+	<div class="ui bottom attached tab segment" data-tab="process"
+		 style="margin-left: 5px;margin-bottom:5px;width: 99%;">
+		<div class="row">
+			<div class="col-md-4">
+				<label id="processNameTitle">
+					Process Name :
+				</label>
+				<select id="selectProcess" class="ui fluid search selection dropdown" name="inline">
+					<option value="" selected="selected">Select a process</option>
+				</select>
+			</div>
+			<div class="col-md-2">
+				<label id="domainP">
+					Domain :
+				</label>
+				<select id="processorDomain" class="ui fluid search selection dropdown">
+					<option value="" selected="selected">default</option>
+				</select>
+			</div>
+			<div class="col-md-2" style="margin-top: 20px;">
+				<button type="button" id="launchProcess" class="btn btn-primary">Launch process</button>
+			</div>
+		</div>
+	</div>
+</div>
+</div>
+<div id="panelContent" class="panel panel-primary" style="margin : 3px">
+	<div class="panel-heading">
+		<h4 class="panel-title">
+			<div id="batchName">
+				<div id="batchId"></div>
+		</h4>
+	</div>
+	<div class="panel-body">
+		<table id="tableStatus" class="tree">
+		</table>
+		<iframe src="" frameborder="0" id="frameProcessor" name="frameProcessor"
+				ALLOWTRANSPARENCY="true" width="100%" height="100%"
+				scrolling="auto" style="height: 100%;overflow:hidden;" scrolling="no" seamless="seamless"></iframe>
+	</div>
+</div>
+<div class="modal">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h4 class="modal-title" id="modalTitle">Default title</h4>
+			</div>
+			<div class="modal-body" id="detailContent">
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
+</body>
+</html>
